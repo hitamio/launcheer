@@ -1,4 +1,8 @@
-# Launcheer
+<p align="center">
+  <img src="Resources/Launcheer.iconset/icon_256x256.png" alt="Launcheer" width="128" height="128">
+</p>
+
+<h1 align="center">Launcheer</h1>
 
 Launcheer is a native macOS Launchpad-style application launcher.
 
@@ -80,6 +84,34 @@ For development:
 ```sh
 swift run
 ```
+
+## Release DMG
+
+This repository includes a GitHub Actions workflow at:
+
+```text
+.github/workflows/release.yml
+```
+
+It builds `dist/Launcheer.app`, packages it as a compressed DMG, calculates a SHA-256 checksum, and uploads both files to a GitHub Release.
+
+Create a release by pushing a version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow publishes:
+
+```text
+Launcheer-0.1.0.dmg
+Launcheer-0.1.0.dmg.sha256
+```
+
+You can also run the workflow manually from GitHub Actions with a tag input such as `v0.1.0`.
+
+Current release builds are unsigned and not notarized. Users may need to allow the app from macOS Privacy & Security after downloading. Code signing and notarization can be added later with Apple Developer ID certificates and GitHub Actions secrets.
 
 ## Settings
 

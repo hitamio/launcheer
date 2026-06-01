@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    name: Build DMG
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          version="${tag#v}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build app bundle
+        shell: bash
+        run: ./scripts/build_app.sh
+
+      - name: Create DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/Launcheer.app"
+          dmg="dist/Launcheer-${{ steps.release.outputs.version }}.dmg"
+          test -d "$app"
+          rm -f "$dmg"
+          hdiutil create \
+            -volname "Launcheer" \
+            -srcfolder "$app" \
+            -ov \
+            -format UDZO \
+            "$dmg"
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag }}"
+          dmg="dist/Launcheer-${{ steps.release.outputs.version }}.dmg"
+          notes="dist/release-notes.md"
+
+          cat > "$notes" <<EOF
+          ## Launcheer ${{ steps.release.outputs.version }}
+
+          macOS app bundle packaged as a DMG.
+
+          ### Install
+
+          1. Download the DMG.
+          2. Open it.
+          3. Drag Launcheer.app to Applications.
+
+          ### SHA-256
+
+          \`\`\`
+          $(cat "$dmg.sha256")
+          \`\`\`
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$dmg" "$dmg.sha256" --clobber
+          else
+            gh release create "$tag" "$dmg" "$dmg.sha256" \
+              --title "Launcheer ${{ steps.release.outputs.version }}" \
+              --notes-file "$notes"
+          fi

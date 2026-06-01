@@ -1906,6 +1906,7 @@ private struct HeaderControls: View {
             Image(systemName: "arrow.clockwise")
         }
         .buttonStyle(HeaderButtonStyle())
+        .focusable(false)
         .help(L10n.tr("help.reloadApplications"))
     }
 }
