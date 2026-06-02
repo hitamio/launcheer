@@ -18,9 +18,7 @@ jobs:
   build-dmg:
     name: Build DMG
     runs-on: macos-15
-    env:
-      HAS_DEVELOPER_ID_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
-      HAS_NOTARY_CREDENTIALS: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+    environment: AppleDeveloper
 
     steps:
       - name: Checkout
@@ -40,8 +38,28 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate signing and notarization secrets
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "$MACOS_CERTIFICATE_P12_BASE64" ]] || missing+=("MACOS_CERTIFICATE_P12_BASE64")
+          [[ -n "$MACOS_CERTIFICATE_PASSWORD" ]] || missing+=("MACOS_CERTIFICATE_PASSWORD")
+          [[ -n "$APPLE_ID" ]] || missing+=("APPLE_ID")
+          [[ -n "$APPLE_TEAM_ID" ]] || missing+=("APPLE_TEAM_ID")
+          [[ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]] || missing+=("APPLE_APP_SPECIFIC_PASSWORD")
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required release secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
-        if: ${{ env.HAS_DEVELOPER_ID_CERTIFICATE == 'true' }}
         id: signing
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -54,7 +72,7 @@ jobs:
           certificate="$RUNNER_TEMP/developer-id.p12"
           password="${KEYCHAIN_PASSWORD:-temporary-keychain-password}"
 
-          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$certificate"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
@@ -64,7 +82,7 @@ jobs:
             -t cert \
             -f pkcs12 \
             -k "$keychain"
-          security list-keychains -d user -s "$keychain" "$(security list-keychains -d user | tr -d '"')"
+          security list-keychains -d user -s "$keychain"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
 
           identity="$(security find-identity -v -p codesigning "$keychain" | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
@@ -103,7 +121,6 @@ jobs:
           shasum -a 256 "$dmg" > "$dmg.sha256"
 
       - name: Notarize DMG
-        if: ${{ env.HAS_NOTARY_CREDENTIALS == 'true' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
