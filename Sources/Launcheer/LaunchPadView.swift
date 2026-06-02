@@ -1198,6 +1198,7 @@ private struct LauncherTile: View {
             .modifier(WiggleEffect(isActive: isEditingApps, phaseSeed: item.id))
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.52, maximumDistance: 8)
                 .onEnded { _ in beginEditing() }
@@ -1353,6 +1354,7 @@ private struct EditModeDeleteButton: View {
             .shadow(color: .black.opacity(0.28), radius: 4, y: 1)
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .help(L10n.tr("help.moveToTrash"))
     }
 }
@@ -1590,6 +1592,7 @@ private struct FolderFullScreenView: View {
                         .modifier(WiggleEffect(isActive: isEditingApps, phaseSeed: app.id))
                     }
                     .buttonStyle(.plain)
+                    .focusable(false)
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.52, maximumDistance: 8)
                             .onEnded { _ in beginEditing() }

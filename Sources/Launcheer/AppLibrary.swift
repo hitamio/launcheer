@@ -1,6 +1,24 @@
 import AppKit
 import Foundation
 
+private enum WorkspaceApplicationOpener {
+    static func open(_ app: LaunchApp, owner: AppLibrary?) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        let appName = app.name
+
+        NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { [weak owner] _, error in
+            Task { @MainActor in
+                if let error {
+                    owner?.lastLaunchError = L10n.tr("error.openApp", appName, error.localizedDescription)
+                } else {
+                    LauncherCommands.hide()
+                }
+            }
+        }
+    }
+}
+
 @MainActor
 final class AppLibrary: ObservableObject {
     @Published private(set) var items: [LauncherItem] = []
@@ -33,18 +51,7 @@ final class AppLibrary: ObservableObject {
 
     func launch(_ app: LaunchApp) {
         lastLaunchError = nil
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-
-        NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { [weak self] _, error in
-            Task { @MainActor in
-                if let error {
-                    self?.lastLaunchError = L10n.tr("error.openApp", app.name, error.localizedDescription)
-                } else {
-                    LauncherCommands.hide()
-                }
-            }
-        }
+        WorkspaceApplicationOpener.open(app, owner: self)
     }
 
     @discardableResult
