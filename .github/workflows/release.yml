@@ -37,11 +37,49 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Import Developer ID certificate
+        if: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
+        id: signing
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/launcheer-signing.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          password="${KEYCHAIN_PASSWORD:-temporary-keychain-password}"
+
+          echo "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain"
+          security list-keychains -d user -s "$keychain" "$(security list-keychains -d user | tr -d '"')"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "$identity" ]]; then
+            echo "Developer ID Application identity was not found in the imported certificate." >&2
+            exit 1
+          fi
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
       - name: Build app bundle
+        env:
+          SIGN_IDENTITY: ${{ steps.signing.outputs.identity || '-' }}
         shell: bash
         run: ./scripts/build_app.sh
 
       - name: Create DMG
+        env:
+          SIGN_IDENTITY: ${{ steps.signing.outputs.identity || '-' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -55,6 +93,29 @@ jobs:
             -ov \
             -format UDZO \
             "$dmg"
+          if [[ "$SIGN_IDENTITY" != "-" ]]; then
+            codesign --force --timestamp --sign "$SIGN_IDENTITY" "$dmg"
+            codesign --verify --verbose=2 "$dmg"
+          fi
+          shasum -a 256 "$dmg" > "$dmg.sha256"
+
+      - name: Notarize DMG
+        if: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="dist/Launcheer-${{ steps.release.outputs.version }}.dmg"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
           shasum -a 256 "$dmg" > "$dmg.sha256"
 
       - name: Create or update GitHub Release

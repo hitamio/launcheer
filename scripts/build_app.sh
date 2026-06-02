@@ -21,4 +21,12 @@ cp "$ROOT/Resources/Launcheer.icns" "$RESOURCES_DIR/Launcheer.icns"
 find "$ROOT/Resources" -maxdepth 1 -name "*.lproj" -type d -exec cp -R {} "$RESOURCES_DIR" \;
 chmod +x "$MACOS_DIR/$APP_NAME"
 
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR"
+else
+  codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
+fi
+codesign --verify --deep --strict "$APP_DIR"
+
 echo "$APP_DIR"

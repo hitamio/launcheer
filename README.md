@@ -111,7 +111,51 @@ Launcheer-0.1.0.dmg.sha256
 
 You can also run the workflow manually from GitHub Actions with a tag input such as `v0.1.0`.
 
-Current release builds are unsigned and not notarized. Users may need to allow the app from macOS Privacy & Security after downloading. Code signing and notarization can be added later with Apple Developer ID certificates and GitHub Actions secrets.
+The build script applies an ad-hoc signature by default so the app bundle is structurally signed:
+
+```sh
+./scripts/build_app.sh
+codesign --verify --deep --strict ./dist/Launcheer.app
+```
+
+Ad-hoc signing is not the same as Developer ID signing. Apps downloaded from GitHub may still be blocked by Gatekeeper until the project is signed with a Developer ID certificate and notarized by Apple.
+
+For local personal builds, running from `dist/Launcheer.app` avoids the browser download quarantine path:
+
+```sh
+open ./dist/Launcheer.app
+```
+
+### Developer ID signing and notarization
+
+To produce a DMG that passes Gatekeeper for public distribution, create a `Developer ID Application` certificate in your Apple Developer account, export it as a `.p12`, and configure these GitHub Actions secrets:
+
+```text
+MACOS_CERTIFICATE_P12_BASE64
+MACOS_CERTIFICATE_PASSWORD
+KEYCHAIN_PASSWORD
+APPLE_ID
+APPLE_TEAM_ID
+APPLE_APP_SPECIFIC_PASSWORD
+```
+
+`MACOS_CERTIFICATE_P12_BASE64` can be generated locally:
+
+```sh
+base64 -i DeveloperIDApplication.p12 | pbcopy
+```
+
+`APPLE_APP_SPECIFIC_PASSWORD` is an app-specific password for the Apple ID used with `notarytool`.
+
+When these secrets are present, the release workflow will:
+
+1. Import the Developer ID certificate into a temporary keychain.
+2. Sign `Launcheer.app` with hardened runtime and timestamp.
+3. Create and sign the DMG.
+4. Submit the DMG to Apple's notary service with `xcrun notarytool`.
+5. Staple and validate the notarization ticket.
+
+Without these secrets, the workflow still creates an ad-hoc signed DMG for local testing.
 
 ## Settings
 
