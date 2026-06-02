@@ -2,7 +2,7 @@ import AppKit
 import Darwin
 import Foundation
 
-struct LaunchApp: Identifiable {
+struct LaunchApp: Identifiable, @unchecked Sendable {
     let id: String
     let name: String
     let url: URL
